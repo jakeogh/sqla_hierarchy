@@ -9,38 +9,45 @@ from sqlalchemy.dialects.postgresql.base import ARRAY
 from sqlalchemy.sql.expression import (
     Select, TableClause, ColumnClause
 )
+
 __all__ = ['Hierarchy', 'supported_db', 'HierarchyLesserError',
            'MissingForeignKeyError']
 
 supported_db = {
-    'postgresql': (8,4,0),
-    'oracle': (10,0,0)
-    }
+    'postgresql': (8, 4, 0),
+    'oracle': (10, 0, 0)
+}
+
 
 class HierarchyError(Exception):
     """Base error class for Hierarchy"""
     pass
 
+
 class MissingForeignKeyError(HierarchyError):
     """If the selected table does not have a foreign key refering to itself,
     this error will be raised"""
+
     def __init__(self, relation):
         self.relation = relation
-        self.args = ("A proper foreign key couldn't be found in relation "\
+        self.args = ("A proper foreign key couldn't be found in relation " \
                      "%s" % (self.relation), )
+
 
 class HierarchyLesserError(HierarchyError):
     """If the database version is lower than the version supported, this error
     will be raised"""
+
     def __init__(self, dialect, version):
         self.dialect = dialect
         self.version = version
 
     def __str__(self):
-        return "This method hasn't been written for %s dialect/version "\
+        return "This method hasn't been written for %s dialect/version " \
                "lesser than %s yet" % (self.dialect,
                                        ".".join([str(x) for x in \
                                                  self.version]))
+
 
 def _build_table_clause(select, name, path_type, ordering_colname=None,
                         ordering_coltype=Integer):
@@ -59,9 +66,10 @@ def _build_table_clause(select, name, path_type, ordering_colname=None,
     cols.append(ColumnClause('connect_path', type_=ARRAY(path_type)))
     if ordering_colname:
         cols.append(ColumnClause('%s_path' % ordering_colname,
-                                type_=ARRAY(ordering_coltype)))
+                                 type_=ARRAY(ordering_coltype)))
     tb = TableClause(name, *cols)
     return tb
+
 
 class Hierarchy(Select):
     """Given a sqlalchemy.schema.Table and a sqlalchemy.sql.expression.Select,
@@ -101,6 +109,7 @@ class Hierarchy(Select):
           clause will not be added to the query
     For examples of Hierarchy, check the tests dir.
     """
+
     def __init__(self, Session, table, select, **kw):
         self.table = table
         self.select = select
@@ -111,12 +120,12 @@ class Hierarchy(Select):
         self.fk_type = None
         # we need to find the relation within the same table
         for ev in self.table.foreign_keys:
-            if ev.column.table.name==ev.parent.table.name:
+            if ev.column.table.name == ev.parent.table.name:
                 self.parent = ev.parent.name
                 self.child = ev.column.name
                 break
         if self.parent is None or self.child is None:
-            raise(MissingForeignKeyError(self.table.name))
+            raise MissingForeignKeyError(self.table.name)
         self.starting_node = kw.pop('starting_node', None)
         self.ordering_colname = kw.pop('ordering_colname', 'ordering')
         # if starting node does not exist or it's null, we add starting_node=0
@@ -147,57 +156,56 @@ class Hierarchy(Select):
                                         type_=ARRAY(select.c[self.ordering_colname].type)))
         Select.__init__(self, columns, **kw)
 
+
 @compiles(Hierarchy)
 def visit_hierarchy(element, compiler, **kw):
     """If the database bound to the connection is not supported, a
     NotImplementedError will be raised"""
-    raise(NotImplementedError("This method hasn't been written "
-                              "for %s dialect yet" % (compiler.dialect.name))
-         )
+    raise NotImplementedError("This method hasn't been written for %s dialect yet" % (compiler.dialect.name))
+
 
 @compiles(Hierarchy, 'oracle')
 def visit_hierarchy(element, compiler, **kw):
     """visit compilation idiom for oracle"""
     if compiler.dialect.server_version_info < supported_db['oracle']:
-        raise(HierarchyLesserError(compiler.dialect.name, 
-                                   supported_db['oracle']))
+        raise HierarchyLesserError
     else:
         sel = element.select
         sel.append_column(literal_column('level', type_=Integer))
-        sel.append_column(literal_column('CONNECT_BY_ISLEAF', 
+        sel.append_column(literal_column('CONNECT_BY_ISLEAF',
                                          type_=Boolean).label('is_leaf'))
         sel.append_column(literal_column(
             "LTRIM(SYS_CONNECT_BY_PATH (%s,','),',')" % (element.child),
             type_=String).label('connect_path'))
-        qry = "%s"  % (compiler.process(sel))
+        qry = "%s" % (compiler.process(sel))
         if hasattr(element, 'starting_node') and \
-           getattr(element, 'starting_node') is not False:
-            if (element.starting_node == "a" and element.fk_type==String) or\
-               (element.starting_node == "0" and element.fk_type==Integer):
+                        getattr(element, 'starting_node') is not False:
+            if (element.starting_node == "a" and element.fk_type == String) or \
+                    (element.starting_node == "0" and element.fk_type == Integer):
                 qry += " start with %s is null" % (element.parent)
             elif getattr(element, 'starting_node') is False:
                 pass
             else:
                 qry += " start with %s=%s" % (element.parent,
-                                             element.starting_node)
+                                              element.starting_node)
         qry += " connect by prior %s=%s" % (element.child, element.parent)
         if kw.get('asfrom', False):
             qry = '(%s)' % qry
         return qry
 
+
 @compiles(Hierarchy, 'mssql')
 def visit_hierarchy(element, compiler, **kw):
     """visit compilation idiom for mssql"""
     if compiler.dialect.server_version_info < supported_db['mssql']:
-        raise(HierarchyLesserError(compiler.dialect.name,
-                                   supported_db['mssql']))
+        raise HierarchyLesserError(compiler.dialect.name, supported_db['mssql'])
+
 
 @compiles(Hierarchy, 'postgresql')
 def visit_hierarchy(element, compiler, **kw):
     """visit compilation idiom for pgsql"""
     if compiler.dialect.server_version_info < supported_db['postgresql']:
-        raise(HierarchyLesserError(compiler.dialect.name,
-                                   supported_db['postgresql']))
+        raise HierarchyLesserError(compiler.dialect.name, supported_db['postgresql'])
     else:
         if element.fk_type == String:
             element.fk_type = String(element.type_length)
@@ -206,15 +214,15 @@ def visit_hierarchy(element, compiler, **kw):
             element.fk_type = Integer
             val = "0"
         ordering_colname = element.ordering_colname
-        if not ordering_colname or ordering_colname not in element.table.c\
+        if not ordering_colname or ordering_colname not in element.table.c \
                 and ordering_colname not in element.select.c:
             ordering_colname = None
         # FIXME: pass type of ordering column in following call if it's not 
         # Integer
         is_ordering = ordering_colname and ordering_colname in \
-                element.select.columns
-        rec = _build_table_clause(element.select, 'rec', 
-                element.fk_type, ordering_colname if is_ordering else None)
+                      element.select.columns
+        rec = _build_table_clause(element.select, 'rec',
+                                  element.fk_type, ordering_colname if is_ordering else None)
         # documentation used for pgsql >= 8.4.0
         #
         # * http://www.postgresql.org/docs/8.4/static/queries-with.html
@@ -227,28 +235,28 @@ def visit_hierarchy(element, compiler, **kw):
         # if the user wants to start from a given node, he pass the
         # starting_node option in the query
         if hasattr(element, 'starting_node') and \
-           getattr(element, 'starting_node') is not False:
+                        getattr(element, 'starting_node') is not False:
             sel1 = sel1.where(func.coalesce(
                 literal_column(element.parent, type_=String),
-                literal(val, type_=String))==\
-                literal(element.starting_node, type_=String))
+                literal(val, type_=String)) == \
+                              literal(element.starting_node, type_=String))
         # the same select submitted by the user plus a 1 as the first level and
         # an array with the current id
         sel1.append_column(literal_column('1', type_=Integer).label('level'))
-        sel1.append_column(literal_column('ARRAY[%s]' %(element.child), 
-                                          type_=ARRAY(element.fk_type)).\
+        sel1.append_column(literal_column('ARRAY[%s]' % (element.child),
+                                          type_=ARRAY(element.fk_type)). \
                            label('connect_path'))
         if is_ordering:
             ordering_col = sel1.c.get(ordering_colname, None)
             if ordering_col is None:
                 ordering_col = element.table.c[ordering_colname]
             sel1.append_column(literal_column('ARRAY[%s]' % (ordering_colname,),
-                                              type_=ARRAY(ordering_col.type)).\
+                                              type_=ARRAY(ordering_col.type)). \
                                label('%s_path' % (ordering_colname,))
             )
         # the non recursive part of the with query must return false for the
         # first values
-        sel1.append_column(literal_column("false", type_=Boolean).\
+        sel1.append_column(literal_column("false", type_=Boolean). \
                            label('cycle'))
         # build the second select
         # the same select as above plus the level column is summing a 1 for
@@ -256,28 +264,28 @@ def visit_hierarchy(element, compiler, **kw):
         # the array of ids we're building as connect_path
         sel2 = element.select._clone()
         sel2._copy_internals()
-        sel2.append_column(label('level', 
-                                 rec.c.level+literal_column("1",
-                                                            type_=Integer)))
-        sel2.append_column(label('connect_path', 
-                      func.array_append(rec.c.connect_path, 
-                                        getattr(element.table.c, element.child))
-                                ))
+        sel2.append_column(label('level',
+                                 rec.c.level + literal_column("1",
+                                                              type_=Integer)))
+        sel2.append_column(label('connect_path',
+                                 func.array_append(rec.c.connect_path,
+                                                   getattr(element.table.c, element.child))
+        ))
         if is_ordering:
             sel2.append_column(label('%s_path' % (ordering_colname),
-                      func.array_append(rec.c['%s_path' % (ordering_colname,)],
-                                        getattr(element.table.c, 
-                                            ordering_colname))
-                                ))
+                                     func.array_append(rec.c['%s_path' % (ordering_colname,)],
+                                                       getattr(element.table.c,
+                                                               ordering_colname))
+            ))
         # check if any member of connect_path has already been visited and
         # return true in that case, preventing an infinite loop (see where
         # section
         sel2.append_column(literal_column(
-                "%s=ANY(connect_path)" % getattr(element.table.c, 
-                                                 element.child)).label('cycle'))
+            "%s=ANY(connect_path)" % getattr(element.table.c,
+                                             element.child)).label('cycle'))
         sel2 = sel2.where(and_(
-            getattr(element.table.c,element.parent)==getattr(rec.c,
-                                                             element.child),
+            getattr(element.table.c, element.parent) == getattr(rec.c,
+                                                                element.child),
             "not cycle"))
         # union_all the previous queries so we can wrapped them in the 'with
         # recursive .. ()' idiom
@@ -290,15 +298,15 @@ def visit_hierarchy(element, compiler, **kw):
         # function for that). If it's contained it means the current id is not
         # a leaf, otherwise it is. 
         new_sel.append_column(
-            literal_column("case connect_path <@ lead(connect_path, 1) over "\
-                           "(order by connect_path) when true then false "\
+            literal_column("case connect_path <@ lead(connect_path, 1) over "
+                           "(order by connect_path) when true then false "
                            "else true end").label('is_leaf')
         )
-        qry = "with recursive rec as (%s)\n%s\norder by %s_path" %\
-                (compiler.process(sel3),
-                 new_sel,
-                 ordering_colname if is_ordering else 'connect'
-                )
+        qry = "with recursive rec as (%s)\n%s\norder by %s_path" % \
+              (compiler.process(sel3),
+               new_sel,
+               ordering_colname if is_ordering else 'connect'
+              )
         if kw.get('asfrom', False):
             qry = '(%s)' % qry
         return qry

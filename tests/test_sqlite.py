@@ -1,7 +1,6 @@
 # -*- coding: UTF-8 -*-
 """"Testing hierarchy dialect in sqlalchemy"""
-import ConfigParser
-from exceptions import NotImplementedError
+import configparser
 from nose.tools import *
 
 from sqlalchemy import Table, Column, ForeignKey, MetaData, create_engine
@@ -26,7 +25,7 @@ dummy_tb = Table('dummy_hierarchy', metadata,
 
 class Dummy(object):
     def __init__(self, **kw):
-        for k, v in kw.iteritems():
+        for k, v in kw.items():
             setattr(self, k, v)
 
     def __repr__(self):
@@ -43,7 +42,7 @@ no_fk_tb = Table('no_fk_tb', metadata,
 
 class NoFk(object):
     def __init__(self, **kw):
-        for k, v in kw.iteritems():
+        for k, v in kw.items():
             setattr(self, k, v)
 
     def __repr__(self):
@@ -80,16 +79,16 @@ def setup():
     dummy_tb.drop(checkfirst=True)
     dummy_tb.create(checkfirst=True)
     xlist = []
-    for ev in dummy_values.items():
-        xlist.append(Dummy(**{'id':ev[0], 'name':u'item %d' %(ev[0]),
+    for ev in list(dummy_values.items()):
+        xlist.append(Dummy(**{'id':ev[0], 'name':'item %d' %(ev[0]),
                               'parent_id':ev[1][1]}))
     DBSession.add_all(xlist)
     DBSession.flush()
     try:
         DBSession.commit()
-    except Exception, e:
+    except Exception as e:
         DBSession.rollback()
-        raise(HierarchyTestError(e.args[0]))
+        raise HierarchyTestError
 
 class TestHierarchy(object):
 

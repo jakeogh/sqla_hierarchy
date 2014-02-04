@@ -118,11 +118,16 @@ class Hierarchy(Select):
         self._bind = Session.bind
         self._whereclause = select._whereclause
         self.fk_type = None
+        self.reverse = kw.pop('reverse', False)
         # we need to find the relation within the same table
         for ev in self.table.foreign_keys:
             if ev.column.table.name == ev.parent.table.name:
-                self.parent = ev.parent.name
-                self.child = ev.column.name
+                if not self.reverse:
+                    self.parent = ev.parent.name
+                    self.child = ev.column.name
+                else:
+                    self.parent = ev.column.name
+                    self.child = ev.parent.name
                 break
         if self.parent is None or self.child is None:
             raise MissingForeignKeyError(self.table.name)
@@ -140,7 +145,7 @@ class Hierarchy(Select):
                 self.type_length = self.table.columns.get(self.parent).type.length
             else:
                 setattr(self, 'starting_node', "0")
-        elif not self.starting_node:
+        elif self.starting_node is False:
             pass
         else:
             # we need to be sure the starting_node value is an String, 

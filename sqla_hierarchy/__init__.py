@@ -1,1 +1,2 @@
-from hierarchy import *
+# -*- coding: utf-8 -*-
+from .hierarchy import *

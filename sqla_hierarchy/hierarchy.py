@@ -5,7 +5,10 @@ from sqlalchemy import Integer, and_, String, Boolean
 from sqlalchemy.sql import select
 from sqlalchemy.sql.expression import func, literal_column, label, literal
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.dialects.postgresql.base import ARRAY
+try:
+    from sqlalchemy import ARRAY
+except ImportError:
+    from sqlalchemy.dialects.postgresql.base import ARRAY
 from sqlalchemy.sql.expression import (
     Select, TableClause, ColumnClause
 )
